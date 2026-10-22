@@ -56,14 +56,12 @@ from: manuals/a2a-101/sections/r-1-operations-by-binding.md, manuals/a2a-101/cap
 | `POST /tasks/{task_id=*}/pushNotificationConfigs` | CreateTaskPushNotificationConfig |
 | `GET /extendedAgentCard` | GetExtendedAgentCard |
 
-## Capture kit and conformance
+## Test your agent with the A2A TCK
 type: annotated-code
 lang: bash
-from: manuals/a2a-101/capture/README.md, manuals/a2a-101/sections/7-3-conformance-testing.md
+from: manuals/a2a-101/sections/7-3-conformance-testing.md
 
 ```bash
-python3 run.py  # three agents and a client, writes out/
-python3 run.py --check  # capture again and compare
 git clone --filter=blob:none https://github.com/a2aproject/a2a-tck.git
 cd a2a-tck
 git checkout 1.0.0.alpha2  # the TCK tag the manual ran
@@ -72,7 +70,7 @@ uv pip install -e .
 ./run_tck.py --sut-host http://localhost:9999  # reads the card, tests each binding
 ```
 
-## The capture kit agents
+## Three agents, a client and an operator
 type: architecture
 from: manuals/a2a-101/capture/README.md, manuals/a2a-101/sections/2-2-discovery-and-supported-interfaces.md, manuals/a2a-101/sections/4-6-push-notification-configs.md, manuals/a2a-101/sections/7-1-a-client.md
 

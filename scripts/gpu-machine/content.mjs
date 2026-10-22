@@ -28,7 +28,7 @@ export const INFO = {
     },
     why: "The serving engine is three processes on the CPU and one model on the GPU. The port is the edge of that system.",
     without: "Nothing reaches the engine.",
-    lesson: manual("s-one-request-end-to-end", "SGLang 101, section 1.2: one request end to end"),
+    lesson: manual("s-what-the-server-does-with-your-request", "SGLang 101, section 1.3: what the server does with your request"),
   },
   tokenizer: {
     name: "Tokenizer process",

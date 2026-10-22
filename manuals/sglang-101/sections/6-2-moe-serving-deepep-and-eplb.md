@@ -20,7 +20,7 @@ claim: Dispatch and combine move every token across GPUs twice per MoE layer, an
 caption: Read left to right. Indigo arrows are token traffic between GPUs. The labels name the SGLang stage and the flag that picks its implementation. From the MoE layer code and the expert parallelism docs at v0.5.22.
 ```
 
-Two flags pick the implementations {{code}}:
+Three flags pick the implementations {{code}}:
 
 | Flag | Default | Picks |
 |---|---|---|
@@ -61,7 +61,7 @@ EPLB is off by default (`--enable-eplb` is false). Turn it on when your measurem
 
 For prefill, SGLang splits by token count. If no split puts at least 48 percent of the tokens on each side, it cuts one sequence across both halves. That is `--tbo-token-distribution-threshold`, 0.48 by default.
 
-The SGLang docs say that TBO can "unlock up to 2x throughput" {{docs}}. The blog post that the docs link to measured 27 to 35 percent on 96 H100 GPUs {{team 2025-05}}. Plan for the measured number.
+The SGLang docs say that TBO can give up to twice the throughput {{docs}}. The blog post that the docs link to measured 27 to 35 percent on 96 H100 GPUs {{team 2025-05}}. Plan for the measured number.
 
 Ant Group turned TBO down on H20 {{field Ant-Group 2025-09}}. It helped only at batch sizes of 64 or 128, and at those sizes their time per output token missed its target. They used single-batch overlap instead, `--enable-single-batch-overlap`, which overlaps shared experts with the combine step. They measured 8 to 10 percent at batches of 20 to 56.
 
@@ -75,21 +75,21 @@ On one GPU there is no dispatch across GPUs, so MoE looks cheap. We served Qwen3
 | 8 | 102.21 ms | 54.96 ms |
 | 64 | 254.06 ms | 131.78 ms |
 
-**We measured** this with three seeds per point. From 1 to 64 concurrent requests, the time per output token grows 7.8 times with BF16 and 7.2 times with FP8. In a dense model, one decode step reads each weight once for the whole batch. In an MoE model, the set of weights grows with the batch.
+**We measured** this with three seeds per point. From 1 to 64 concurrent requests, the time per output token grows 7.8 times with BF16 and 7.2 times with FP8. In a dense model, one decode step reads each weight once for the whole batch. In an MoE model, the set of weights that a step reads grows with the batch. We did not run a dense control on the GB10.
 
 ```figure
 id: fig-6-2c
 kind: chart
 title: time per output token against concurrency for an MoE model on a GB10
-claim: The time per output token grows almost in step with the batch, because each extra request reads other experts.
+claim: The time per output token grew 7.8 times while the batch grew 64 times, and each extra request can read other experts.
 caption: Read each line from left to right. Plum is BF16, green is FP8, and the band is the lowest and highest of three seeds. Qwen3-30B-A3B, 512 tokens in, 128 out. From capture/gpu/summary/gb10.json.
 ```
 
-The cause is the union of experts. At concurrency 1, each layer reads the weights of 8 experts in a decode step. At 64, 64 tokens each choose 8 of 128 experts. If routing were uniform, one step would read about 126 of the 128 experts in each layer.
+One likely cause is the union of experts. At concurrency 1, each layer reads the weights of 8 experts in a decode step. At 64, 64 tokens each choose 8 of 128 experts. If routing were uniform, one step would read about 126 of the 128 experts in each layer.
 
-That is arithmetic, not a measurement, and real routing is less even. The name says the model activates about 3B parameters per token. A batch of 64 reads close to all 30B.
+That is arithmetic, not a measurement, and real routing is less even. The time per token kept rising from 32 to 64 users, where the union grows only about 13 percent. So attention, KV reads, and prefill steps in the sweep grow with the batch too. The name says the model activates about 3B parameters per token. A batch of 64 reads close to all 30B.
 
-**Our position:** on one box, plan an MoE model by the bytes a full batch reads, not by its active parameters. Quantize the experts first. FP8 cut the time per token to between 0.52 and 0.57 of BF16 at every concurrency we measured.
+**Our position:** on one box, plan an MoE model by the bytes a full batch reads, not by its active parameters. Quantize first. The FP8 checkpoint with an FP8 KV cache cut the time per token to between 0.52 and 0.57 of BF16 at every concurrency we measured. It quantized all weights and the KV cache, so we cannot assign the gain to the experts alone.
 
 ## Our position
 

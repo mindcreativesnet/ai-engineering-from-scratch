@@ -1,8 +1,8 @@
 # --speculative-algorithm
 
-> Speculative decoding spends idle GPU compute to commit several tokens per step, so it cuts latency at low load and costs throughput when the GPU is already full.
+> Speculative decoding spends idle GPU compute to commit several tokens per step, so it cuts latency at low load and can cost throughput when the GPU is already full.
 
-A user turned on EAGLE-3 for Llama-3.1-8B on an A6000 and ran two tests. At batch 1, output went from 42.0 to 92.5 tok/s, more than twice as fast. At concurrency 20, output fell from 217.8 to 164.4 tok/s, a quarter slower. Both numbers are in issue #5274, and both are correct. A maintainer answered that speculative decoding "is for small batch sizes rather than stress tests" {{issue #5274}}.
+A user turned on EAGLE-3 for Llama-3.1-8B on an A6000 and ran two tests. At batch 1, output went from 42.0 to 92.5 tok/s, more than twice as fast. At concurrency 20, output fell from 217.8 to 164.4 tok/s, a quarter slower. Both numbers are in issue #5274, and both are correct. A maintainer answered that speculative decoding is meant for small batches, not for stress tests {{issue #5274}}.
 
 When you finish this section, you can explain draft, verify, and acceptance length, and read the defaults SGLang picks. You can also find the request limit that speculation sets and decide where speculation belongs.
 
@@ -45,7 +45,7 @@ With topk 1, the code forces the draft token count to the step count plus one.
 
 ## The limit nobody asked for
 
-The EAGLE, NGRAM, DFLASH, and DSPARK handlers at v0.5.22 each do the same thing when you did not set `--max-running-requests`. It sets the value to 48 and logs one warning: "Max running requests is reset to 48 for speculative decoding" {{code}}. Speculation needs memory for draft tokens and works best at small batch, so the cap protects the server. It also caps your benchmark.
+The EAGLE, NGRAM, DFLASH, and DSPARK handlers at v0.5.22 each do the same thing when you did not set `--max-running-requests`. It sets the value to 48 and logs one warning: `Max running requests is reset to 48 for speculative decoding` {{code}}. Speculation needs memory for draft tokens and works best at small batch, so the cap protects the server. It also caps your benchmark.
 
 A throughput test with speculation on and no explicit limit measures a server that admits 48 requests. If your traffic runs 200 concurrent requests, the other 152 wait in the queue, and time to first token grows. The warning prints once at startup, and it scrolls away before the first request.
 
@@ -67,7 +67,7 @@ caption: Output tok/s for Llama-3.1-8B with and without EAGLE-3 on one A6000, as
 
 We ran EAGLE-3 on `Qwen/Qwen3-30B-A3B-Instruct-2507` on one NVIDIA GB10. The draft was `lmsys/SGLang-EAGLE3-Qwen3-30B-A3B-Instruct-2507-SpecForge-Nex`, with the shape (3, 1, 4) that the SGLang cookbook uses for this pair.
 
-The first start failed. The draft config says 2,048 positions, and the target says 262,144. The context length check raised `ValueError` and ended with "To allow overriding this maximum, set the env var SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1" {{code}}. The cookbook command for this pair sets that variable, so we set it too.
+The first start failed. The draft config says 2,048 positions, and the target says 262,144. The context length check raised `ValueError` and ended with `To allow overriding this maximum, set the env var SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1` {{code}}. The cookbook command for this pair sets that variable, so we set it too.
 
 ```listing
 title: the draft context length check with the override set
@@ -96,7 +96,7 @@ note: Four lines from the startup log. Timestamps are cut.
 … max_total_num_tokens=8827, chunked_prefill_size=4096, max_prefill_tokens=16384, max_running_requests=48, context_len=40960, available_gpu_mem=1.19 GB
 ```
 
-The same start shows the price of a draft on a small card. The target alone had a pool of 24,094 tokens on this L4. With the draft loaded, the pool held 8,827 tokens, about 13 of our 640-token requests.
+The same start shows the price of a draft on a small card. The target alone had a pool of 24,094 tokens on this L4. With the draft loaded, the pool held 8,827 tokens, about 14 of our 640-token requests. The sweep server on the same card started with more free memory and held 9,951 tokens.
 
 **We measured** three seeds at each concurrency from 1 to 64, with the BF16 server as the baseline:
 
@@ -107,12 +107,12 @@ The same start shows the price of a draft on a small card. The target alone had 
 | 32 | 201.91 ms | 106.97 ms | 150.66 | 228.78 |
 | 64 | 254.06 ms | 138.41 ms | 235.38 | 276.32 |
 
-The acceptance length stayed between 2.71 and 2.74 tokens per step at every concurrency. The gain per token did not shrink with load. It grew from 1.60 times at concurrency 1 to 1.89 times at 32.
+The acceptance length stayed between 2.71 and 2.74 tokens per step at every concurrency. The gain per token stayed at 1.56 times or more at every load. It peaked at 1.89 times at concurrency 32, and it was 1.84 times at 64.
 
 ```figure
 id: fig-4-4b
 kind: chart
-title: on a mixture-of-experts model the EAGLE-3 gain grows with the batch
+title: on a mixture-of-experts model the EAGLE-3 gain holds as the batch grows
 claim: On the GB10, EAGLE-3 cut the median time per token by 1.60 times at concurrency 1 and by 1.89 times at 32.
 caption: The line is baseline median TPOT divided by EAGLE-3 median TPOT, at each concurrency. The dashed rose line marks no gain. The footnote gives the acceptance length range. From capture/gpu/summary/gb10.json.
 ```
@@ -123,7 +123,7 @@ The cap is the limit. At concurrency 64, throughput was still higher than the ba
 
 ## What we measured on a 24 GB L4
 
-We ran the same sweep with the dense `Qwen/Qwen3-8B` and the `Tengyunw/qwen3_8b_eagle3` draft on one L4. This time we set the variable, as the sweep does for every EAGLE-3 server.
+We ran the same sweep with the dense `Qwen/Qwen3-8B` and the `Tengyunw/qwen3_8b_eagle3` draft on one L4. The default server ran on 2026-10-16 and the EAGLE-3 server on 2026-10-17, both at a median clock of 1,080 MHz or more. This time we set the variable, as the sweep does for every EAGLE-3 server.
 
 ```listing
 title: the pool of an EAGLE-3 server on the L4
@@ -144,7 +144,7 @@ note: Startup lines from the server log of the sweep. Timestamps are cut.
 | 32 | 96.18 ms | 43.82 ms | 270.11 | 269.42 |
 | 64 | 107.42 ms | 51.50 ms | 250.85 | 245.34 |
 
-The acceptance length was 2.73 to 2.74 tokens per step at every concurrency. Each token came out about two times faster at every load. Yet from concurrency 32, the server delivered no more tokens per second than the default.
+The acceptance length was 2.73 to 2.74 tokens per step at every concurrency. Each token came out 1.6 to 2.3 times faster at every load. Yet from concurrency 32, the server delivered no more tokens per second than the default.
 
 ```figure
 id: fig-4-4c
@@ -158,7 +158,7 @@ The pool explains the difference. With 15 requests in the pool, the rest waited 
 
 ## Our position
 
-Treat speculative decoding as a latency tool for low and middle concurrency. Turn it on for interactive traffic with a few users per replica. Leave it off for batch jobs and for servers that run at high concurrency.
+Treat speculative decoding as a latency tool for low and middle concurrency. Turn it on for interactive traffic with a few users per replica. Leave it off for batch jobs and high concurrency on a card where the KV pool is the limit, as on our L4. On the GB10, where the pool had room, speculation still gave 1.17 times the throughput at 64 users.
 
 Measure the cross point on your model before you accept that rule. On the mixture-of-experts model above, speculation still won at concurrency 32 on the GB10. On the dense model on the L4, it stopped winning at 32, because the draft took nearly 60 percent of the pool.
 

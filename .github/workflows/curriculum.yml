@@ -168,6 +168,8 @@ jobs:
         run: node --test site/test_star_nudge.js
       - name: lesson walkthrough syncs steps and schedules revisits
         run: node --test site/test_lesson_walkthrough.js
+      - name: lesson quizzes are placed once, before the footer, in every language
+        run: node --test site/test_quiz_placement.js
       - name: agent machine simulation and page stay in sync
         run: node --test site/test_agent_machine.js
       - name: decompiler machine simulation and page stay in sync

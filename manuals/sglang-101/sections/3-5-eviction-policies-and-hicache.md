@@ -2,7 +2,7 @@
 
 > When the GPU pool is full, SGLang evicts the least recently used prefix by default, and HiCache keeps evicted prefixes in host memory and in optional storage.
 
-A coding agent holds a session of eight turns, and its history grows past 25,000 tokens. The GPU pool holds a few dozen such sessions. The ninety-first user arrives, and SGLang must evict a cached prefix to make room. When the first user returns, their history is gone, and the server computes all 25,000 tokens again.
+A coding agent holds a session of eight turns, and its history grows past 25,000 tokens. The GPU pool holds ninety such sessions. The ninety-first user arrives, and SGLang must evict a cached prefix to make room. When the first user returns, their history is gone, and the server computes all 25,000 tokens again.
 
 When you finish this section, you can choose an eviction policy from a measured hit rate. You can also decide when hierarchical caching pays for its cost and which of its settings to change first.
 
@@ -98,18 +98,20 @@ claim: At 32 distinct system prompts on the L4, HiCache cut the median TTFT from
 caption: Median TTFT against the number of distinct system prompts, three seeds per point, on a log scale. Rose is the GPU pool only and green adds the host tier. From capture/gpu/summary/l4.json.
 ```
 
-| Groups | Prompt tokens to keep | Median TTFT, GPU only | Median TTFT, HiCache | Output tok/s, GPU only | Output tok/s, HiCache |
-|---|---|---|---|---|---|
-| 4 | 8,192 | 360 ms | 361 ms | 82.39 | 81.64 |
-| 16 | 32,768 | 3,259 ms | 553 ms | 37.95 | 74.75 |
-| 32 | 65,536 | 5,449 ms | 817 ms | 25.72 | 69.29 |
-| 64 | 131,072 | 6,821 ms | 3,610 ms | 21.37 | 35.93 |
+| Groups | Prompt tokens to keep | Median TTFT, GPU only / HiCache | Output tok/s, GPU only / HiCache | Median SM clock, GPU only / HiCache |
+|---|---|---|---|---|
+| 4 | 8,192 | 360 / 361 ms | 82.39 / 81.64 | 1,455 / 1,440 MHz |
+| 16 | 32,768 | 3,259 / 553 ms | 37.95 / 74.75 | 788 / 1,223 MHz |
+| 32 | 65,536 | 5,449 / 817 ms | 25.72 / 69.29 | 465 / 765 MHz |
+| 64 | 131,072 | 6,821 / 3,610 ms | 21.37 / 35.93 | 450 / 450 MHz |
 
-**We measured** no cost at 4 groups, when every prompt fit on the GPU. At 32 groups the host tier cut the median wait 6.7 times and served 2.7 times the throughput. At 64 groups, the prompts needed more than the GPU and host pools held together, about 120,000 tokens. HiCache still halved the wait, but it was no longer near the 4-group result.
+**We measured** no cost at 4 groups, when every prompt fit on the GPU. At 32 groups the host tier cut the median wait 6.7 times and served 2.7 times the throughput. Both servers ran far below our clock floor of 1,000 MHz there. The HiCache server ran at 1.65 times the clock of the default server. So the 6.7 times mixes the cache effect with a clock gap.
 
-The card was hot in these runs. From 16 groups up, 52 to 95 percent of the samples had the thermal flag set, on both servers. The default server recomputed more and ran hotter, so part of its loss is the clock. The cache hit lines above do not depend on the clock.
+At 64 groups, the prompts needed more than the GPU and host pools held together, about 120,000 tokens. HiCache still cut the wait 1.9 times, but it was no longer near the 4-group result.
 
-The GB10 ran the same workload as a control, without HiCache. We left the host tier off there. The GB10 has one memory for the CPU and the GPU, so a host copy would take memory from the same place as the pool.
+The card was hot in these runs. From 16 groups up, 52 to 95 percent of the samples had the thermal flag set, on both servers. The default server recomputed more and ran hotter, so part of its loss is the clock. The cache hit lines above do not depend on the clock, and they are the stronger evidence.
+
+The GB10 ran the same workload as a control, on a different model, `Qwen/Qwen3-30B-A3B-Instruct-2507`, and without HiCache. We left the host tier off there. The GB10 has one memory for the CPU and the GPU, so a host copy would take memory from the same place as the pool.
 
 ```listing
 title: the GB10 pool and two prefill lines from the 64-group run
@@ -124,7 +126,7 @@ note: The pool at startup, then two consecutive prefill lines. Long lines are cu
 
 Its pool held 260,013 tokens, room for all 64 system prompts at once. The second prefill line found 15,146 tokens in the cache for 7 new requests. The median TTFT stayed between 448 and 460 ms from 4 groups to 64. Nothing was evicted, so there was nothing for a host tier to bring back.
 
-The rule from this test is the size of your working set. Add up the distinct prefixes that your users come back to within a few minutes. When that sum is larger than the GPU pool, the host tier pays for itself. When it is smaller, it adds a copy for nothing.
+Our test points to one rule: the size of your working set. Add up the distinct prefixes that your users come back to within a few minutes. In our test, the host tier paid when that sum was larger than the GPU pool and smaller than the GPU and host pools together. When it was smaller than the GPU pool, the host tier added nothing.
 
 ## Our position: add HiCache for long sessions, and add it in steps
 
@@ -137,7 +139,7 @@ HiCache pays for itself when sessions outlive the GPU pool: multi-turn chat, cod
 5. Change the eviction policy last.
 
 ```takeaways
-- Add the host tier when your repeated prefixes are larger than the GPU pool.
+- Add the host tier when your repeated prefixes are larger than the GPU pool, and measure it on your card.
 - Keep lru until a measured hit rate shows a reason to change it.
 - Turn on HiCache for long multi-turn sessions, not for one-time prompts.
 - Start HiCache with host memory only, then add storage after you measure.

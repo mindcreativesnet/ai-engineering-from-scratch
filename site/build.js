@@ -2600,6 +2600,7 @@ module.exports = {
   canonicalLessonUrl,
   certificationStats,
   githubSourceUrl,
+  sourceRepository,
   lessonDocumentSeo,
   GLOSSARY_CATEGORY_ORDER,
   annotateLessonMeta,

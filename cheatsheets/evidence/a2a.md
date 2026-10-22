@@ -33,12 +33,11 @@ Abbreviations: S = manuals/a2a-101/sections, C = manuals/a2a-101/capture, O = ma
 - POST /tasks/{task_id=*}/pushNotificationConfigs: S/r-1-operations-by-binding.md:15
 - GET /extendedAgentCard: S/r-1-operations-by-binding.md:19
 
-## Capture kit and conformance (annotated-code, 8 lines)
-- python3 run.py writes out/, --check compares: C/README.md:3,6-7
+## Test your agent with the A2A TCK (annotated-code, 6 lines)
 - git clone, cd, git checkout 1.0.0.alpha2, uv venv, uv pip install, ./run_tck.py --sut-host: S/7-3-conformance-testing.md:11-18
 - run_tck reads the card and tests each declared binding: S/7-3-conformance-testing.md:9
 
-## The capture kit agents (architecture, 7 nodes, 6 edges)
+## Three agents, a client and an operator (architecture, 7 nodes, 6 edges)
 - planner.py client agent: C/README.md:20, S/7-1-a-client.md:5
 - agent cards at /.well-known/agent-card.json: C/README.md:26, S/2-2-discovery-and-supported-interfaces.md:13
 - test-runner :41241 streaming, push: C/README.md:16

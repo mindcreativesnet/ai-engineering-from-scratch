@@ -86,5 +86,5 @@ module.exports = figure('plate-sglang-request', {
   });
 
   f.beat(0);
-  f.text(20, 576, 'From capture/out/cache-experiment.txt · SGLang 0.5.22 on MLX · Qwen3-0.6B-4bit', { size: 11, serif: true, hue: 'ink-mute' });
+  f.text(20, 576, 'SGLang 0.5.22 on MLX · Qwen3-0.6B-4bit', { size: 11, serif: true, hue: 'ink-mute' });
 });

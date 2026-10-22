@@ -24,7 +24,7 @@ function pill(f, x, y, w, title, lines, hue, laterBeat) {
 module.exports = figure('plate-planner-run', {
   height: 756,
   title: 'One planner, three remote agents',
-  desc: 'The planner from capture/planner.py is a tall machine on the left with a slot for each of three lanes, in the order 19-planner.log ran them. In each lane the planner calls a remote agent, drawn as a machine with its port and skills, and the agent puts its task on a tray, one slip per state. test-runner completes with 13 passed, drawn as 13 cells on its top. code-reviewer asks which base branch to use, the planner answers main, and the task completes with one finding. deployer waits in TASK_STATE_AUTH_REQUIRED, the planner follows the task with SubscribeToTask, an operator outside A2A approves, and the task completes.',
+  desc: 'The planner of the kit is a tall machine on the left with a slot for each of three lanes, in the order that the planner log records. In each lane the planner calls a remote agent, drawn as a machine with its port and skills, and the agent puts its task on a tray, one slip per state. test-runner completes with 13 passed, drawn as 13 cells on its top. code-reviewer asks which base branch to use, the planner answers main, and the task completes with one finding. deployer waits in TASK_STATE_AUTH_REQUIRED, the planner follows the task with SubscribeToTask, an operator outside A2A approves, and the task completes.',
 }, f => {
   const face = (part, points, hue, opacity) => f.polygon(points.map(([u, v, k]) => part.P(u, v, k)), { fill: color(hue), fillOpacity: opacity });
 
@@ -130,5 +130,5 @@ module.exports = figure('plate-planner-run', {
   f.arrow([450, operator.top[1] - 22], [450, three.oy + 18], { style: 'effect', label: 'approves' });
 
   f.beat(0);
-  f.text(20, 744, 'From capture/out/19-planner.log · task ids shortened to 8 characters', { size: 11, serif: true, hue: 'ink-mute' });
+  f.text(20, 744, 'Task ids shortened to 8 characters', { size: 11, serif: true, hue: 'ink-mute' });
 });

@@ -103,7 +103,7 @@ note: Three lines from the startup log. Timestamps and the end of the second lin
 … Currently radix cache is not compatible with flashinfer attention backend for deterministic inference. It will be supported in the future.
 ```
 
-The price at concurrency 8 was 18 percent of the throughput. Output fell from 78.92 to 64.83 tok/s, and the median time per token rose from 97.30 to 117.43 ms. The radix cache was off, so a workload with shared prefixes pays more than this test shows.
+In one run per server, the price at concurrency 8 was 18 percent of the throughput. Output fell from 78.92 to 64.83 tok/s, and the median time per token rose from 97.30 to 117.43 ms. The radix cache was off, so a workload with shared prefixes pays more than this test shows.
 
 ## Our position
 
@@ -121,7 +121,7 @@ Set `sampling_seed` on each request that must reproduce. Seed 42 for everyone ma
 
 ```takeaways
 - Run sglang.test.test_deterministic on your model and backend before you rely on reproducible output.
-- Expect deterministic mode to turn off prefix caching on flashinfer, and pick fa3 or triton.
+- Expect deterministic mode to turn off prefix caching on flashinfer. Pick triton, or fa3 and fa4 where your GPU supports them.
 - Send one prompt alone and in a batch, and count distinct outputs, before you trust temperature 0.
 - Set SGLANG_RETURN_ORIGINAL_LOGPROB when a trainer compares logprobs at temperature 1.
 - Pass --mlx-enable-sampling on Apple silicon when requests need temperature or logprobs.

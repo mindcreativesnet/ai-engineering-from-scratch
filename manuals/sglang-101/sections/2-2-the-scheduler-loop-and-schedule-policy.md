@@ -8,7 +8,9 @@ When you finish this section, you can read the scheduler's `Prefill batch` and `
 
 ## The cost of a bad order
 
-A GPU step costs about the same whether it computes tokens for 1 request or for 8. So the scheduler wants big batches. A user who waits in the queue sees nothing at all. So the scheduler also wants short queues. Every policy is a trade between those two costs.
+For a dense model on a memory-bound GPU, a decode step costs about the same whether it computes tokens for 1 request or for 8. On our L4 with Qwen3-8B, one step took 60 ms for 1 user and 66 ms for 8. A mixture-of-experts model is different. On our GB10 the step grew from 33 ms to 102 ms, and a bigger batch can read more experts.
+
+So the scheduler wants big batches. A user who waits in the queue sees nothing at all. So the scheduler also wants short queues. Every policy is a trade between those two costs.
 
 The obvious fix is a smart order, for example the request with the most cached prefix first. The SGLang paper proposed exactly that, longest prefix match, and proved it optimal for an offline batch {{paper}}. Online traffic is not an offline batch, and the smart order costs CPU time on every step.
 
@@ -66,14 +68,16 @@ The default at v0.5.22 is `fcfs` {{code}}. The choices split into two groups.
 | Group | Policies | What they use |
 |---|---|---|
 | Cache-aware | `lpm`, `dfs-weight`, `hrrn`, `shortest-prefill-first` | the radix tree: how much of each prompt is already cached |
-| Cache-agnostic | `fcfs`, `lof`, `random`, `routing-key`, `priority` | arrival order, output length, a routing key, or a priority |
+| Cache-agnostic | `fcfs`, `lof`, `random`, `routing-key` | arrival order, output length, or a routing key |
+
+The parser also accepts `--schedule-policy priority`, but the scheduler has no such order, and the server stops with "Unknown schedule_policy". To order by priority, use `--enable-priority-scheduling` with `fcfs`.
 
 Many readers expect `lpm`, because the paper describes it. It was the default in v0.4.3 and became `fcfs` by v0.4.6. The research for this manual did not find the pull request that changed it.
 
 Two rules in the code limit the cache-aware policies {{code}}:
 
-- When the waiting queue holds more than 128 requests, `lpm` and `hrrn` change to FCFS for that turn. The comment says why: "Turn off the expensive prefix matching and sorting when the #queue is large."
-- When the radix cache is off, every cache-aware policy becomes FCFS.
+- When the waiting queue holds more than 128 requests, `lpm` and `hrrn` change to FCFS for that turn. The code comment says why: prefix matching and sorting cost too much when the queue is long.
+- When the radix cache is off, `lpm`, `dfs-weight`, and `hrrn` become FCFS. `shortest-prefill-first` refuses to start.
 
 So `lpm` helps only in a narrow band. The queue must be long enough to reorder, short enough to stay under 128, and full of shared prefixes.
 
@@ -96,7 +100,7 @@ The common advice is to make the chunk smaller, so that decode steps run more of
 
 **We measured** no gain from a smaller chunk on either machine. On the GB10 we ran the default, an explicit 8,192, and 1,024. At 1 and 2 requests per second, all three were inside the seed spread of each other. At 0.5 per second, the 1,024 chunk was worse. Its P99 ITL was 1,977 against 929 ms, and the seed ranges did not overlap.
 
-On the L4, this workload was more than the card could serve at every rate. Output stayed near 44 tokens per second, and the median first token took 36 to 62 seconds. The card ran hot, at a median clock of 690 to 915 MHz, because this sweep had no clock floor. The worst token gap stayed between 2.5 and 2.9 s with either chunk.
+On the L4, this workload was more than the card could serve at every rate. Output stayed near 44 tokens per second, and the median first token took 36 to 62 seconds. The card throttled, at a median clock of 690 to 915 MHz, and this sweep did not repeat throttled runs. The worst token gap stayed between 2.5 and 2.9 s with either chunk. The 1,024 runs also ran 80 to 90 MHz slower than the default at 0.5 and 2 per second. So the small gap between the two chunks is not a chunk effect.
 
 The scheduler rule from the start of this section fits the L4 result. Prefill wins whenever the scheduler can admit something. With a full queue, a smaller chunk adds more prefill turns ahead of the decode steps, and the stream still waits.
 
@@ -108,9 +112,9 @@ The scheduler rule from the start of this section fits the L4 result. Prefill wi
 | 1 | 46.6 / 47.5 | 2,491 / 2,289 ms |
 | 2 | 47.3 / 47.6 | 2,572 / 2,418 ms |
 
-The mixed chunk lowered the median P99 ITL by 5 to 8 percent, and the seed ranges overlapped at every rate. The worst token gap still took more than 2.2 s. On a card that cannot keep up with its prompts, neither flag gives the stream a smooth flow. The fix is more prefill capacity, or fewer long prompts per second.
+The mixed chunk lowered the median P99 ITL by 5 to 8 percent, and the seed ranges overlapped at every rate. The worst token gap still took more than 2.2 s. On our L4 with Qwen3-8B, a card that cannot keep up with these prompts, neither flag gave the stream a smooth flow. We expect the fix to be more prefill capacity or fewer long prompts per second, but we did not test it.
 
-The GB10 keeps up with this workload, and there the mixed chunk did help. We ran it with the same sweep on 2026-10-21, against a new default run on the same day. Both had a pool of about 236,000 tokens and a median clock of 2,405 MHz or more.
+The GB10 keeps up with this workload, and there the mixed chunk did help. We ran it with the same sweep on 2026-10-21, against a new default run on the same day. The default server had a pool of 251,910 tokens and the mixed-chunk server 236,751 tokens. Every run had a median clock of 2,405 MHz or more.
 
 ```listing
 title: the GB10 pool with the mixed chunk
@@ -127,9 +131,11 @@ note: The pool at startup of the server with --enable-mixed-chunk.
 | 1 | 219 / 177 ms | 244 / 362 ms | 108.8 / 112.6 |
 | 2 | 261 / 221 ms | 238 / 416 ms | 133.2 / 138.1 |
 
-**We measured** a smoother stream and a slower first token. The P99 ITL fell by 15 to 19 percent, outside the seed spread at 0.5 and at 2 per second. The median TTFT rose by 49 to 74 percent at 1 and 2 per second, outside the seed spread. Throughput rose by 2 to 4 percent, inside the spread. The default run from 2026-10-17 gave the same picture, so the result held on two days.
+**We measured** a smoother stream and a slower first token. The P99 ITL fell by 15 to 19 percent, outside the seed spread at 0.5 and at 2 per second. The median TTFT rose by 49 to 74 percent at 1 and 2 per second, outside the seed spread. Throughput rose by 2 to 4 percent, inside the spread. 
 
-So the flag is a trade, and the card decides whether you get it. When prefill keeps up, the decode tokens that ride in the prefill batch stop waiting, and each new prompt waits a little longer. When prefill cannot keep up, as on the L4, the queue sets the pace and the flag changes little.
+The default run from 2026-10-17 gave the same direction. Against it, the P99 ITL fell by 16 to 29 percent. The median TTFT rose by 35 and 54 percent at 1 and 2 per second.
+
+On our two cards with this workload, the flag was a trade, and the card decided whether you get it. When prefill keeps up, the decode tokens that ride in the prefill batch stop waiting, and each new prompt waits a little longer. When prefill cannot keep up, as on the L4, the queue sets the pace and the flag changes little.
 
 ```listing
 title: a larger chunk that did not start
@@ -147,7 +153,7 @@ The other direction failed on the L4 at startup. With a chunk of 8,192, the KV p
 
 ## Our position
 
-Keep `fcfs`. It is fair, it costs no prefix matching on the hot path, and the radix cache still gives you the cache hits. A shared prefix that arrived first is in the tree when the next request matches it, whatever the order.
+Keep `fcfs`. It is fair, it does not sort the queue by prefix, and the radix cache still gives you the cache hits. A shared prefix that arrived first is in the tree when the next request matches it, whatever the order.
 
 Switch to `lpm` only when three things are true. Your traffic shares long prefixes. Your queue is often between a few and 128 requests deep. You measured the cache hit rate before and after with `/metrics`. [Section 5.2](#s-the-metrics-endpoint) shows the `cache_hit_rate` series to compare.
 
@@ -169,4 +175,4 @@ The scheduler loop admits against every limit at once, and the smallest one wins
 - Expect a chunk above the default for your GPU to need more free memory at startup.
 ```
 
-Sources: python/sglang/srt/managers/scheduler.py (run_event_loop, event_loop_normal, get_next_batch_to_run, run_batch, process_batch_result), python/sglang/srt/managers/schedule_policy.py (CacheAwarePolicy, CacheAgnosticPolicy, WAITING_QUEUE_PREFIX_MATCH_MAX, _determine_active_policy, _validate_and_adjust_policy), python/sglang/srt/arg_groups/fields/schedule.py at v0.5.22; SGLang paper, arXiv 2312.07104; capture/out/server-default.log; issue https://github.com/sgl-project/sglang/issues/36889; capture/gpu/summary/gb10.json and capture/gpu/summary/l4.json (mixed); capture/gpu/sweep.py (mixed sweep); capture/gpu/incidents/l4-chunk-8192-prefill-graph-oom.txt; capture/gpu/out-gb10/server-mixed-chunk.log, capture/gpu/summary/gb10.json (mixed.mixed-chunk, mixed.graphs-on-b).
+Sources: python/sglang/srt/managers/scheduler.py (run_event_loop, event_loop_normal, get_next_batch_to_run, run_batch, process_batch_result), python/sglang/srt/managers/schedule_policy.py (CacheAwarePolicy, CacheAgnosticPolicy, WAITING_QUEUE_PREFIX_MATCH_MAX, _determine_active_policy, _validate_and_adjust_policy), python/sglang/srt/arg_groups/fields/schedule.py at v0.5.22; SGLang paper, arXiv 2312.07104; capture/out/server-default.log; issue https://github.com/sgl-project/sglang/issues/36889; capture/gpu/summary/gb10.json and capture/gpu/summary/l4.json (mixed); capture/gpu/sweep.py (mixed sweep); capture/gpu/incidents/l4-chunk-8192-prefill-graph-oom.txt; capture/gpu/out-gb10/server-mixed-chunk.log, capture/gpu/summary/gb10.json (mixed.mixed-chunk, mixed.graphs-on-b), capture/gpu/out-gb10/server-pools.log

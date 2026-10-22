@@ -233,5 +233,5 @@
   <circle cx="590" cy="548" r="9" fill="var(--m-paper, #fafaf5)" stroke="var(--m-green-ink, #336b40)" stroke-width="1"/>
   <text x="590" y="552" font-size="11" text-anchor="middle" fill="var(--m-green-ink, #336b40)">3</text>
   </g>
-  <text x="20" y="576" font-size="11" class="m-serif" fill="var(--m-ink-mute, #6f6f6a)">From capture/out/cache-experiment.txt · SGLang 0.5.22 on MLX · Qwen3-0.6B-4bit</text>
+  <text x="20" y="576" font-size="11" class="m-serif" fill="var(--m-ink-mute, #6f6f6a)">SGLang 0.5.22 on MLX · Qwen3-0.6B-4bit</text>
 </svg>
